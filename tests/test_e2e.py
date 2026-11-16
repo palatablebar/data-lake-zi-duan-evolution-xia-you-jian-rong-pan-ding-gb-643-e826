@@ -13,6 +13,7 @@ PAGES = [
     ("/types", "类型与兼容"),
     ("/mapping", "字段映射"),
     ("/impact", "影响面"),
+    ("/scope", "判定范围"),
     ("/batches", "版本历史"),
     ("/spec", "迁移单"),
 ]
@@ -75,3 +76,48 @@ def test_home_renders_field_rows(client):
     assert "order_code" in home.text
     assert "pay_channel" in home.text
     assert "破坏" in home.text
+
+
+def test_scope_is_consistent_across_page_and_exports(client):
+    """页面、JSON、范围 CSV、字段 CSV、manifest 共用同一份范围/原因/下游。"""
+    scope_json = client.get("/api/scope").json()["scope"]
+    scope_csv = {row["table"]: row
+                 for row in csv.DictReader(io.StringIO(
+                     client.get("/api/export/scope.csv").text))}
+    manifest = json.loads(client.get("/api/export/manifest.json").text)
+    fields_csv = list(csv.DictReader(io.StringIO(
+        client.get("/api/export/fields.csv").text)))
+
+    # 同一份待复核表集合
+    assert scope_json["review_tables"] == ["dim_order"]
+    assert manifest["scope"]["review_tables"] == scope_json["review_tables"]
+    assert scope_csv["dim_order"]["scope_status"] == "REVIEW"
+    assert scope_csv["fct_pay"]["scope_status"] == "CONCLUSIVE"
+
+    # 同一份受影响下游：CSV 里 dim_order 的下游数 == JSON 闭包总数口径
+    assert int(scope_csv["dim_order"]["affected_count"]) == 3
+    assert scope_json["affected_count"] == 5
+    assert manifest["scope"]["affected_count"] == scope_json["affected_count"]
+
+    # 字段 CSV 中待复核行的表全部落在待复核表集合内
+    review_rows = [row for row in fields_csv if row["scope_status"] == "REVIEW"]
+    assert review_rows
+    assert {row["table"] for row in review_rows} == set(scope_json["review_tables"])
+
+    # 两个范围导出端点字节一致
+    assert client.get("/api/export/scope.csv").text == \
+        client.get("/api/scope/export.csv").text
+
+    # 范围页与迁移单页都渲染同一份待复核表
+    assert "dim_order" in client.get("/scope").text
+    spec = client.get("/spec").text
+    assert "dim_order" in spec and "fct_pay" in spec
+
+
+def test_spec_markdown_formal_clauses_exclude_review(client):
+    text = client.get("/api/export/spec.md").text
+    # 正式条款小节里不出现待复核表，扣留小节里出现
+    formal = text.split("### 4.A")[0]
+    assert "dim_order" not in formal.split("## 4")[1]
+    assert "SCOPE_REVIEW" in text
+    assert "[SCOPE_REVIEW] dim_order" in text

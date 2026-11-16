@@ -3,12 +3,13 @@
 {% block body %}
 <section class="doc-section">
   <h1>迁移单</h1>
-  <p class="lede">条款 <span class="mono">{{ clauses|length }}</span>　破坏 <span class="mono">{{ ledger.counts.breaking or 0 }}</span>　断链 <span class="mono">{{ ledger.counts.refs_broken or 0 }}</span></p>
+  <p class="lede">正式条款 <span class="mono">{{ clauses|length }}</span>　正式破坏 <span class="mono">{{ ledger.formal.breaking if ledger.formal else (ledger.counts.breaking or 0) }}</span>　扣留 <span class="mono">{{ withheld_clauses|length }}</span>　待复核表 <span class="mono">{{ scope.review_count or 0 }}</span></p>
   <div class="actions">
     <a class="btn" href="/api/export/spec.md">迁移单 MD</a>
     <a class="btn ghost" href="/api/export/fields.csv">字段账 CSV</a>
     <a class="btn ghost" href="/api/export/refs.csv">引用账 CSV</a>
     <a class="btn ghost" href="/api/export/ledger.csv">账目 CSV</a>
+    <a class="btn ghost" href="/api/export/scope.csv">范围 CSV</a>
     <a class="btn ghost" href="/api/export/manifest.json">运行清单</a>
   </div>
 
@@ -17,32 +18,88 @@
   {% elif clauses %}
   {% for item in clauses %}
   <article class="spec-clause">
-    <h3><span class="mono">{{ item.no }}</span> {{ item.table }}.{{ item.old_name or '—' }} → {{ item.new_name or '—' }}</h3>
+    <h3><span class="mono">4.{{ loop.index }}</span> {{ item.table }}.{{ item.old_name or '—' }} → {{ item.new_name or '—' }}</h3>
     <p class="meta">原因 <span class="mono">{{ item.primary }}</span>（{{ item.primary_label }}）</p>
     <p class="meta">类型 <span class="mono">{{ item.old_type or '—' }} → {{ item.new_type or '—' }}</span>　变化 {{ item.change }}</p>
     <p class="meta">读者 {% if item.reader_ok %}通过{% else %}不通过{% endif %}　写者 {% if item.writer_ok %}通过{% else %}不通过{% endif %}　引用 {{ item.ref_count }} 处</p>
   </article>
   {% endfor %}
   {% else %}
-  <p class="empty">没有破坏项。</p>
+  <p class="empty">判定范围内没有破坏项。</p>
   {% endif %}
 </section>
 
 <section class="doc-section">
-  <h2><span class="clause">4</span>映射 SQL</h2>
+  <h2><span class="clause">4.A</span>待复核扣留项（不出正式条款）</h2>
+  {% if withheld_clauses %}
+  <div class="wrap-scroll">
+    <table>
+      <caption>这些表存在阻断级坏行，证据不完整，字段记录保留但不进正式结论<sup class="fn">1</sup></caption>
+      <thead>
+        <tr><th>表</th><th>字段</th><th>原原因码</th><th>扣留原因</th></tr>
+      </thead>
+      <tbody>
+        {% for item in withheld_clauses %}
+        <tr>
+          <td class="name">{{ item.table }}</td>
+          <td class="name">{{ item.old_name or '—' }} → {{ item.new_name or '—' }}</td>
+          <td class="reason"><span class="code">{{ item.primary|reason }}</span></td>
+          <td class="reason"><span class="code">{{ 'SCOPE_REVIEW'|reason }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">没有扣留项。</p>
+  {% endif %}
+</section>
+
+<section class="doc-section">
+  <h2><span class="clause">5</span>映射 SQL</h2>
+  <h3>正式别名（判定范围内）</h3>
   {% if aliases %}
   <pre>{% for item in aliases %}{{ item.sql }}  -- {{ item.table }}
 {% endfor %}</pre>
   {% else %}
-  <p class="empty">没有改名。</p>
+  <p class="empty">判定范围内没有改名。</p>
+  {% endif %}
+  <h3>待复核别名（扣留）</h3>
+  {% if withheld_aliases %}
+  <pre>{% for item in withheld_aliases %}-- [SCOPE_REVIEW] {{ item.table }}：{{ item.sql }}
+{% endfor %}</pre>
+  {% else %}
+  <p class="empty">没有扣留别名。</p>
   {% endif %}
 </section>
 
 <section class="doc-section">
-  <h2><span class="clause">6</span>回滚</h2>
+  <h2><span class="clause">6</span>判定范围与受影响下游</h2>
+  {% if scope.get('tables') %}
+  <div class="wrap-scroll">
+    <table>
+      <thead><tr><th>表</th><th>范围</th><th>原因</th><th class="num">阻断行</th><th>受影响下游</th></tr></thead>
+      <tbody>
+        {% for item in scope.tables %}
+        <tr>
+          <td class="name">{{ item.table }}</td>
+          <td>{% if item.status == 'REVIEW' %}<span class="st st-warn">待复核</span>{% else %}<span class="st st-ok">正式</span>{% endif %}</td>
+          <td class="reason">{% for code in item.reasons %}<span class="code">{{ code|reason }}</span>{% if not loop.last %}　{% endif %}{% else %}—{% endfor %}</td>
+          <td class="num">{{ item.blocked_count }}</td>
+          <td class="name">{% for c in item.affected_consumers %}{{ c.name }}{% if not loop.last %}，{% endif %}{% else %}—{% endfor %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+
+<section class="doc-section">
+  <h2><span class="clause">7</span>回滚</h2>
   <ol class="rollback">
-    <li>先建兼容视图，旧名字继续可读。</li>
-    <li>破坏项补默认值或换回原类型，再跑一次。</li>
+    <li>先建正式兼容视图，旧名字继续可读；待复核别名先不下发。</li>
+    <li>正式破坏项补默认值或换回原类型；待复核表修好坏行、补齐证据后再跑一次。</li>
     <li>版本切回上一版，端点保持左闭右开。</li>
   </ol>
   {% if warnings %}
@@ -52,8 +109,8 @@
 
 <aside class="notes">
   <ol class="footnotes">
-    <li>条款号与导出的 Markdown 一致。<a class="back" href="#main">↩</a></li>
-    <li>账目差额不为 0 说明判定漏项。<a class="back" href="#main">↩</a></li>
+    <li>待复核表的字段记录全部保留，只是不进正式兼容结论与迁移条款。<a class="back" href="#main">↩</a></li>
+    <li>页面与导出（MD / CSV / manifest）共用同一份判定范围。<a class="back" href="#main">↩</a></li>
   </ol>
 </aside>
 {% endblock %}

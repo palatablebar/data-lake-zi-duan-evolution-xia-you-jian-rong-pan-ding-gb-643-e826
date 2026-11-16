@@ -13,6 +13,9 @@ from app.modules.m4_mapping import service as mapping
 from app.modules.m5_impact import service as impact
 from app.modules.m6_batches import guard, history, window as window_mod
 from app.modules.m7_migration import service as migration
+from app.modules.m8_scope import revision as scope_revision
+from app.modules.m8_scope import scope as scope_rules
+from app.modules.m8_scope import service as scope_service
 
 
 def _ref_counts(consumers: list[dict]) -> dict:
@@ -98,9 +101,25 @@ def execute(old_file: str = config.DEFAULT_OLD, new_file: str = config.DEFAULT_N
     edges = _edges(old_snapshot, new_snapshot, diff, base_snapshot)
     resolution = mapping.resolve(refs["consumers"], old_snapshot["fields"],
                                  new_snapshot["fields"], edges)
+
+    # 表级判定范围：坏行只隔离所在表，其他表照常出正式结论。
+    # 先算范围、再给逐字段行打标记，记录一条不丢，但范围外的不进正式迁移单。
+    scope_payload = scope_service.compute_run_scope({
+        "fields_old": old_snapshot["fields"],
+        "fields_new": new_snapshot["fields"],
+        "quarantine_old": old_snapshot["diagnostics"],
+        "quarantine_new": new_snapshot["diagnostics"],
+        "refs": {"consumers": refs["consumers"]},
+        "diff": diff["rows"],
+    })
+    scope_rules.annotate_diff(diff["rows"], scope_payload)
+    scope_service.refresh_breaking_split(scope_payload, diff["rows"])
+    # 映射表在打标之后构建，别名/冲突行才能带上同样的范围标记
     mapping_table = mapping.build_mapping(old_snapshot["fields"], new_snapshot["fields"], diff)
+
     impact_payload = impact.build(diff, refs["consumers"], resolution)
     ledger = migration.build_ledger(diff, refs["consumers"], resolution)
+    migration.annotate_ledger_scope(ledger, diff["rows"], scope_payload)
 
     warnings = guard.overlap_warnings(window, store.list_windows())
     created_at = config.now_utc().isoformat()
@@ -146,11 +165,14 @@ def execute(old_file: str = config.DEFAULT_OLD, new_file: str = config.DEFAULT_N
                        + [dict(row, side="new") for row in new_snapshot["diagnostics"]]),
         "quarantine_old": old_snapshot["diagnostics"],
         "quarantine_new": new_snapshot["diagnostics"],
+        "scope": scope_payload,
         "warnings": warnings,
         "reused": False,
     }
     run["summary"] = history.summary_of(run)
     store.save_run(run)
+    # 范围随批次落第一版修订；落盘失败由 revision 层保留旧版并显式报错
+    scope_revision.persist_revision(run["run_id"], scope_payload, note="初次范围")
     return run
 
 

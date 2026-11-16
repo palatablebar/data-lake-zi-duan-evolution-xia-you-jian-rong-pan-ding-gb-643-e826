@@ -51,10 +51,15 @@ docker compose up -d --build
 | GET | `/api/batches` | 批次历史 |
 | GET | `/api/reconcile` | 四账对账 |
 | GET | `/api/export/spec.md` | 迁移单 Markdown |
-| GET | `/api/export/fields.csv` | 字段账 CSV |
+| GET | `/api/export/fields.csv` | 字段账 CSV（含 scope_status/scope_reason 两列） |
 | GET | `/api/export/refs.csv` | 引用账 CSV |
-| GET | `/api/export/ledger.csv` | 账目 CSV |
-| GET | `/api/export/manifest.json` | 运行清单 |
+| GET | `/api/export/ledger.csv` | 账目 CSV（含正式/扣留破坏、待复核表与波及下游） |
+| GET | `/api/export/scope.csv` | 判定范围 CSV（每表一行：范围、原因、阻断行、受影响下游） |
+| GET | `/api/export/manifest.json` | 运行清单（含 scope 段） |
+| GET | `/api/scope` | 当前批次判定范围 JSON |
+| GET | `/api/scope/revisions` | 范围修订历史 |
+| POST | `/api/scope/revisions` | 按当前数据重算并落一版范围（相同内容幂等） |
+| POST | `/api/scope/rollback` | 回滚到上一版范围（用 `.bak` 原子恢复） |
 
 ## 6 失败处置
 
@@ -63,7 +68,14 @@ docker compose up -d --build
 | 409 `VERSION_STALE` | 提交带的基线序号落后 | 去掉 `base_version_seq` 或填当前序号 |
 | 400 `WINDOW_INVERTED` | 生效区间起点不早于终点 | 检查 `effective_from` / `effective_to` |
 | 400 `BAD_INPUT` | 文件名、参数或 JSON 结构不对 | 看返回的 `detail` |
-| 404 `NOT_FOUND` | 还没跑过批次 | 先在 `/batches` 点「跑一次」 |
+| 404 `NOT_FOUND` | 还没跑过批次 / 没有可回滚备份 | 先在 `/batches` 点「跑一次」；回滚前先成功落过第二版 |
+| 500 `SCOPE_PERSIST_FAILED` | 范围文件落盘失败（权限/磁盘） | 旧版与备份仍在，修好后重算或调 `/api/scope/rollback` |
+
+### 判定范围文件
+
+- SQLite 表 `scope_revisions` 是权威历史；文件快照在 `data/scope/<run_id>.scope.json`，上一版备份为同目录 `<run_id>.bak.json`。
+- 可用环境变量 `FIELDMAP_SCOPE_DIR` 改快照目录；落盘走「备份 → 临时文件 → 原子替换」，失败不碰旧文件。
+- 待复核表修好坏行、补齐证据后重新采信再跑批次；相同输入命中批次键复用，不重复建行。
 
 ## 7 端口与并发
 

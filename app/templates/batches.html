@@ -3,7 +3,8 @@
 {% block body %}
 <section class="doc-section">
   <h1>版本历史</h1>
-  <p class="lede">批次 <span class="mono">{{ runs|length }}</span>　当前序号 <span class="mono">{{ current_seq }}</span></p>
+  <p class="lede">批次 <span class="mono">{{ runs|length }}</span>　当前序号 <span class="mono">{{ current_seq }}</span>
+    {% if run and run.get('scope') %}　正式表 <span class="mono">{{ run.scope.conclusive_count }}</span>　待复核表 <span class="mono">{{ run.scope.review_count }}</span>　波及下游 <span class="mono">{{ run.scope.affected_count }}</span>{% endif %}</p>
   <div class="actions">
     <button type="button" data-action="run">跑一次</button>
     <button type="button" class="ghost" data-action="run" data-force-stale="1">陈旧提交</button>
@@ -71,7 +72,30 @@
 </section>
 
 <section class="doc-section">
-  <h2><span class="clause">3</span>警告</h2>
+  <h2><span class="clause">3</span>判定范围</h2>
+  {% if run and run.get('scope') %}
+  <p class="lede">正式结论 <span class="mono">{{ run.scope.conclusive_count }}</span> 张　待复核 <span class="mono">{{ run.scope.review_count }}</span> 张　正式破坏 <span class="mono">{{ ledger.counts.formal_breaking or 0 }}</span>　扣留破坏 <span class="mono">{{ ledger.counts.withheld_breaking or 0 }}</span>　<a href="/scope">进入判定范围页 →</a></p>
+  <table>
+    <thead><tr><th>表</th><th>范围</th><th>原因</th><th class="num">阻断行</th><th>受影响下游</th></tr></thead>
+    <tbody>
+      {% for item in run.scope.tables %}
+      <tr>
+        <td class="name">{{ item.table }}</td>
+        <td>{% if item.status == 'REVIEW' %}<span class="st st-warn">待复核</span>{% else %}<span class="st st-ok">正式</span>{% endif %}</td>
+        <td class="reason">{% for code in item.reasons %}<span class="code">{{ code|reason }}</span>{% if not loop.last %}　{% endif %}{% else %}—{% endfor %}</td>
+        <td class="num">{{ item.blocked_count }}</td>
+        <td class="name">{% for c in item.affected_consumers %}{{ c.name }}{% if not loop.last %}，{% endif %}{% else %}—{% endfor %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">还没有范围。</p>
+  {% endif %}
+</section>
+
+<section class="doc-section">
+  <h2><span class="clause">4</span>警告</h2>
   {% if run and run.get('warnings') %}
   <table>
     <thead><tr><th>原因</th><th>明细</th></tr></thead>

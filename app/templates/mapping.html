@@ -3,19 +3,20 @@
 {% block body %}
 <section class="doc-section">
   <h1>字段映射</h1>
-  <p class="lede">改名 <span class="mono">{{ stats.renamed or 0 }}</span>　冲突 <span class="mono">{{ stats.conflicts or 0 }}</span>　新增 <span class="mono">{{ stats.added or 0 }}</span>　删除 <span class="mono">{{ stats.deleted or 0 }}</span></p>
+  <p class="lede">改名 <span class="mono">{{ stats.renamed or 0 }}</span>　冲突 <span class="mono">{{ stats.conflicts or 0 }}</span>　新增 <span class="mono">{{ stats.added or 0 }}</span>　删除 <span class="mono">{{ stats.deleted or 0 }}</span>
+    {% if run and run.get('scope') %}　待复核表 <span class="mono">{{ run.scope.review_count }}</span>（{% for name in run.scope.review_tables %}<span class="code">{{ name }}</span>{% if not loop.last %}，{% endif %}{% endfor %}）{% endif %}</p>
   {% if empty %}
   <p class="empty">还没有批次。</p>
   {% else %}
   <div class="wrap-scroll">
     <table>
-      <caption>旧名到新名</caption>
+      <caption>旧名到新名<sup class="fn">1</sup></caption>
       <thead>
-        <tr><th>表</th><th>旧名</th><th>新名</th><th>类型</th><th>映射</th><th>结论</th></tr>
+        <tr><th>表</th><th>旧名</th><th>新名</th><th>类型</th><th>映射</th><th>范围</th><th>结论</th></tr>
       </thead>
       <tbody>
         {% for row in mapping.get('rows', []) %}
-        <tr>
+        <tr{% if not row.in_scope %} class="is-review"{% endif %}>
           <td class="name">{{ row.table }}</td>
           <td class="name">{{ row.old_name }}</td>
           <td class="name">{{ row.new_name }}</td>
@@ -25,6 +26,7 @@
             {% elif row.status == 'renamed' %}<span class="st st-warn">改名</span>
             {% else %}<span class="st st-info">同名</span>{% endif %}
           </td>
+          <td>{% if row.in_scope %}<span class="st st-ok">正式</span>{% else %}<span class="st st-warn">待复核</span>{% endif %}</td>
           <td class="reason"><span class="code">{{ row.primary|reason }}</span></td>
         </tr>
         {% endfor %}

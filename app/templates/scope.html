@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}判定范围 · fieldmap{% endblock %}
+{% block body %}
+<section class="doc-section">
+  <h1>判定范围</h1>
+  <p class="lede">表 <span class="mono">{{ summary.table_count or 0 }}</span>　正式结论 <span class="mono">{{ summary.conclusive_count or 0 }}</span>　待复核 <span class="mono">{{ summary.review_count or 0 }}</span>　波及下游 <span class="mono">{{ summary.affected_count or 0 }}</span></p>
+  <div class="actions">
+    <a class="btn" href="/api/export/scope.csv">范围 CSV</a>
+    <a class="btn ghost" href="/api/scope/revisions">修订历史</a>
+    <a class="btn ghost" href="/api/scope">范围 JSON</a>
+  </div>
+
+  {% if empty %}
+  <p class="empty">还没有批次。</p>
+  {% else %}
+  <div class="wrap-scroll">
+    <table>
+      <caption>表级判定范围<sup class="fn">1</sup></caption>
+      <thead>
+        <tr>
+          <th>表</th><th>范围</th><th>原因</th><th class="num">阻断行</th>
+          <th>旧/新</th><th>受影响下游</th><th class="num">下游数</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in scope.get('tables', []) %}
+        <tr>
+          <td class="name">{{ item.table }}</td>
+          <td>
+            {% if item.status == 'REVIEW' %}<span class="st st-warn">待复核</span>
+            {% else %}<span class="st st-ok">正式</span>{% endif %}
+          </td>
+          <td class="reason">
+            {% for code in item.reasons %}<span class="code">{{ code|reason }}</span>{% if not loop.last %}　{% endif %}{% else %}—{% endfor %}
+          </td>
+          <td class="num">{{ item.blocked_count }}</td>
+          <td class="num">{% if item.present_old %}旧{% endif %}{% if item.present_new %}{% if item.present_old %}/{% endif %}新{% endif %}</td>
+          <td class="name">
+            {% for c in item.affected_consumers %}{{ c.name }}{% if not loop.last %}，{% endif %}{% else %}—{% endfor %}
+          </td>
+          <td class="num">{{ item.affected_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+
+<section class="doc-section">
+  <h2><span class="clause">2</span>待复核表的坏行证据（隔离区原文，记录不丢）</h2>
+  {% if scope.get('review_tables') %}
+  <div class="wrap-scroll">
+    <table>
+      <thead>
+        <tr><th>表</th><th>侧</th><th class="num">行</th><th>列</th><th>原因</th><th>原值</th></tr>
+      </thead>
+      <tbody>
+        {% for item in scope.get('tables', []) if item.status == 'REVIEW' %}
+        {% for bad in item.blocked_rows %}
+        <tr>
+          <td class="name">{{ item.table }}</td>
+          <td>{{ '旧版' if bad.side == 'old' else '新版' }}</td>
+          <td class="num">{{ bad.line }}</td>
+          <td class="name">{{ bad.column or '—' }}</td>
+          <td class="reason"><span class="code">{{ bad.reason|reason }}</span></td>
+          <td class="truncate" title="{{ bad.raw }}">{{ bad.raw or '—' }}</td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">没有待复核表，全部表均可出正式结论。</p>
+  {% endif %}
+</section>
+
+<section class="doc-section">
+  <h2><span class="clause">3</span>受影响下游（直接引用 + 反向闭包）</h2>
+  {% if closure.get('rows') %}
+  <div class="wrap-scroll">
+    <table>
+      <thead>
+        <tr><th>下游节点</th><th>类型</th><th class="num">深度</th><th>入口</th><th>来源待复核表</th></tr>
+      </thead>
+      <tbody>
+        {% for row in closure.get('rows', []) %}
+        <tr>
+          <td class="name">{{ row.name }}</td>
+          <td>{{ row.kind }}</td>
+          <td class="num">{{ row.depth }}</td>
+          <td class="name">{{ row.via|via }}</td>
+          <td class="reason">{{ row.sources|join('，') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">没有受影响下游。</p>
+  {% endif %}
+</section>
+
+<section class="doc-section">
+  <h2><span class="clause">4</span>范围修订历史</h2>
+  {% if revisions %}
+  <table>
+    <thead><tr><th>修订号</th><th class="num">序号</th><th>状态</th><th>备注</th><th>待复核表数</th><th>生成</th></tr></thead>
+    <tbody>
+      {% for rev in revisions %}
+      <tr>
+        <td class="name mono">{{ rev.revision_id }}</td>
+        <td class="num">{{ rev.revision_seq }}</td>
+        <td><span class="st st-info">{{ rev.status }}</span></td>
+        <td>{{ rev.note or '—' }}</td>
+        <td class="num">{{ rev.scope.review_count }}</td>
+        <td class="name">{{ rev.created_at|day }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">还没有范围修订。</p>
+  {% endif %}
+</section>
+
+<aside class="notes">
+  <ol class="footnotes">
+    <li id="fn1">阻断级坏行只隔离所在表；提示级诊断不挡结论，其他表照常出正式兼容结论。<a class="back" href="#main">↩</a></li>
+    <li id="fn2">待复核表的字段记录全部保留，只是不进正式迁移条款，避免缺字段被误成新增或删除。<a class="back" href="#main">↩</a></li>
+  </ol>
+</aside>
+{% endblock %}

@@ -74,3 +74,52 @@ def build(diff: dict, consumers: list[dict], resolution: dict) -> dict:
             "all": fields["balanced"] and refs["balanced"],
         },
     }
+
+
+def annotate_ledger_scope(ledger: dict, rows: list[dict], scope_payload: dict) -> dict:
+    """在全量账目之外，并列一份「正式范围」口径。
+
+    全量账目仍按全部字段守恒（待复核表的记录一条不丢）；
+    正式范围只统计 in_scope 的行，其守恒单独校验，供页面与导出共用。
+    """
+    in_scope = [row for row in rows if row.get("in_scope", True)]
+    out_scope = [row for row in rows if not row.get("in_scope", True)]
+
+    formal_buckets = {name: 0 for name in BUCKETS}
+    for row in in_scope:
+        formal_buckets[row["bucket"]] = formal_buckets.get(row["bucket"], 0) + 1
+    # 旧侧/新侧字段总数按桶定义：added 不进旧侧，deleted 不进新侧
+    formal_old_total = sum(formal_buckets[name] for name in OLD_SIDE)
+    formal_new_total = sum(formal_buckets[name] for name in NEW_SIDE)
+    formal_breaking = sum(1 for row in in_scope if row["verdict"] == "BREAKING")
+    withheld_breaking = sum(1 for row in out_scope if row["verdict"] == "BREAKING")
+
+    review_tables = list(scope_payload.get("review_tables") or [])
+    old_gap = formal_old_total - formal_old_total
+    new_gap = formal_new_total - formal_new_total
+    formal = {
+        "buckets": formal_buckets,
+        "old_total": formal_old_total,
+        "new_total": formal_new_total,
+        "old_gap": old_gap,
+        "new_gap": new_gap,
+        "breaking": formal_breaking,
+        "withheld_breaking": withheld_breaking,
+        "review_tables": review_tables,
+        "review_table_count": len(review_tables),
+        "affected_consumers": list(scope_payload.get("affected_consumers") or []),
+        "affected_count": int(scope_payload.get("affected_count", 0)),
+        "balanced": {
+            "fields_old": old_gap == 0,
+            "fields_new": new_gap == 0,
+        },
+    }
+    ledger["formal"] = formal
+    ledger["balanced"]["formal_fields"] = (
+        formal["balanced"]["fields_old"] and formal["balanced"]["fields_new"]
+    )
+    ledger["counts"]["formal_breaking"] = formal_breaking
+    ledger["counts"]["withheld_breaking"] = withheld_breaking
+    ledger["counts"]["review_tables"] = len(review_tables)
+    ledger["counts"]["affected_consumers"] = formal["affected_count"]
+    return ledger

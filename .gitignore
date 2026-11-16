@@ -29,3 +29,11 @@ target/
 *.o
 *.obj
 .DS_Store
+
+# fieldmap 运行期数据：SQLite、WAL 与判定范围快照/备份
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.scope.json
+*.bak.json

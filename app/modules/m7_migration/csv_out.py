@@ -13,9 +13,15 @@ FIELD_HEADER = [
     "field_id", "table", "old_name", "new_name", "old_type", "new_type",
     "change", "type_detail", "required_change", "reader", "writer", "verdict",
     "primary_reason", "bucket", "ref_count", "line_old", "line_new",
+    "scope_status", "scope_reason",
 ]
 
 REF_HEADER = ["consumer", "kind", "ref", "table", "column", "via", "field_id", "reason"]
+
+SCOPE_HEADER = [
+    "table", "scope_status", "reasons", "blocked_count",
+    "present_old", "present_new", "affected_consumers", "affected_count",
+]
 
 
 def _buffer() -> tuple[io.StringIO, "csv.writer"]:
@@ -45,6 +51,8 @@ def fields_csv(rows: list[dict]) -> str:
             str(row.get("ref_count", 0)),
             str(row.get("line_old") or ""),
             str(row.get("line_new") or ""),
+            row.get("scope_status") or "CONCLUSIVE",
+            row.get("scope_reason") or "",
         ])
     return buffer.getvalue()
 
@@ -73,6 +81,34 @@ def ledger_csv(ledger: dict) -> str:
     refs = ledger.get("refs") or {}
     for name in ("refs_total", "reachable", "broken", "aliased"):
         writer.writerow([name, refs.get(name, 0)])
+    formal = ledger.get("formal") or {}
+    writer.writerow(["formal_breaking", formal.get("breaking", 0)])
+    writer.writerow(["withheld_breaking", formal.get("withheld_breaking", 0)])
+    writer.writerow(["review_tables", formal.get("review_table_count", 0)])
+    writer.writerow(["affected_consumers", formal.get("affected_count", 0)])
+    for table in formal.get("review_tables", []):
+        writer.writerow(["review_table", table])
+    for name in formal.get("affected_consumers", []):
+        writer.writerow(["affected_consumer", name])
+    return buffer.getvalue()
+
+
+def scope_csv(scope: dict) -> str:
+    """判定范围导出：与 /scope 页面同一份范围、原因、受影响下游。"""
+    buffer, writer = _buffer()
+    writer.writerow(SCOPE_HEADER)
+    for item in scope.get("tables", []):
+        affected = " ".join(c["name"] for c in item.get("affected_consumers", []))
+        writer.writerow([
+            item.get("table", ""),
+            item.get("status", ""),
+            ";".join(item.get("reasons") or []),
+            item.get("blocked_count", 0),
+            "Y" if item.get("present_old") else "N",
+            "Y" if item.get("present_new") else "N",
+            affected,
+            item.get("affected_count", 0),
+        ])
     return buffer.getvalue()
 
 

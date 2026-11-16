@@ -13,6 +13,20 @@ def build_ledger(diff: dict, consumers: list[dict], resolution: dict) -> dict:
     return ledger.build(diff, consumers, resolution)
 
 
+def annotate_ledger_scope(ledger_payload: dict, rows: list[dict], scope_payload: dict) -> dict:
+    return ledger.annotate_ledger_scope(ledger_payload, rows, scope_payload)
+
+
+def formal_clauses(run: dict) -> list[dict]:
+    """正式迁移单条款：只含范围内的破坏项；待复核表的破坏项一律扣留。"""
+    return [item for item in clauses(run) if item.get("in_scope", True)]
+
+
+def withheld_clauses(run: dict) -> list[dict]:
+    """被范围扣留的破坏项，单独列出原因与受影响下游，不进正式条款号。"""
+    return [item for item in clauses(run) if not item.get("in_scope", True)]
+
+
 def spec_markdown(run: dict) -> str:
     return spec_md.render(run)
 
@@ -31,6 +45,10 @@ def refs_csv_text(run: dict) -> str:
 
 def ledger_csv_text(run: dict) -> str:
     return csv_out.ledger_csv(run.get("ledger") or {})
+
+
+def scope_csv_text(run: dict) -> str:
+    return csv_out.scope_csv(run.get("scope") or {})
 
 
 def manifest_json_text(run: dict) -> str:

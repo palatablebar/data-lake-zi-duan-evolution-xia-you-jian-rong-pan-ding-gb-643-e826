@@ -1,7 +1,7 @@
 # 深度登记 fieldmap
 
-- 规模：中型（7 个功能模块，76 个文件，65 条测试）
-- 核心规则：字段身份只认 `field_id`；类型兼容按 Decimal 值域 / 刻度 / 精确整数三件套判定；影响面 = 引用身份解析后的反向闭包
+- 规模：中型（8 个功能模块，84 个文件，106 条测试）
+- 核心规则：字段身份只认 `field_id`；类型兼容按 Decimal 值域 / 刻度 / 精确整数三件套判定；影响面 = 引用身份解析后的反向闭包；判定范围按表隔离，坏行只停所在表
 - 使用者与工作流：湖仓数据管理员拿到上游新版元数据后，判定 60 个下游视图/任务是否还能跑，并出一份带条款号的迁移单
 
 ## 功能模块
@@ -15,6 +15,7 @@
 | M5 影响面 | 看受影响的下游节点、环、断链、单边登记 | GET /api/impact | `app/modules/m5_impact/handler.py` `app/modules/m5_impact/service.py` `app/modules/m5_impact/closure.py` `app/modules/m5_impact/cycle.py` `app/modules/m5_impact/broken.py` | `tests/test_m5_impact.py` |
 | M6 版本批次 | 跑批次、看历史、验陈旧拒绝与区间重叠 | POST /api/runs | `app/modules/m6_batches/handler.py` `app/modules/m6_batches/service.py` `app/modules/m6_batches/window.py` `app/modules/m6_batches/guard.py` `app/modules/m6_batches/history.py` | `tests/test_m6_batches.py` |
 | M7 迁移单 | 出带条款号的迁移单与三份账目 CSV | GET /api/export/spec.md | `app/modules/m7_migration/handler.py` `app/modules/m7_migration/service.py` `app/modules/m7_migration/spec_md.py` `app/modules/m7_migration/csv_out.py` `app/modules/m7_migration/ledger.py` | `tests/test_m7_migration.py` |
+| M8 判定范围 | 表级正式/待复核、坏行证据、受影响下游、范围修订与回滚 | GET /api/scope、`/scope` | `app/modules/m8_scope/handler.py` `app/modules/m8_scope/service.py` `app/modules/m8_scope/scope.py` `app/modules/m8_scope/propagate.py` `app/modules/m8_scope/revision.py` | `tests/test_m8_scope.py` |
 
 ## 陷阱登记
 
@@ -30,6 +31,9 @@
 | TRAP-22 | 同一字段被连续改过两次名 | 只认最近一跳，最早的名字解析不到 | 跨版本改名链一路解析到底 | `app/modules/m4_mapping/rename.py` | `tests/test_m4_mapping.py::test_trap22_alias_chain_resolves_multi_hop` |
 | TRAP-25 | 两个版本生效区间重叠 | 取到哪版看运气 | 半开区间比较，重叠直接标记警告 | `app/modules/m6_batches/window.py` | `tests/test_m6_batches.py::test_trap25_overlap_flagged_but_adjacent_clean` |
 | TRAP-26 | 基于旧版本号提交 | 后提交无条件覆盖新结果 | 版本号乐观锁，基线落后即 409 | `app/modules/m6_batches/guard.py` | `tests/test_m6_batches.py::test_trap26_stale_submission_rejected` |
+| TRAP-27 | 上游元数据部分行损坏，整批仍出迁移单 | 坏表拖停整批，或跳过坏行让缺字段误成新增/删除、迁移单放错消费方 | 阻断行只隔离所在表（表级待复核），其他表照出正式结论；坏行记录全保留，范围外字段不进正式条款 | `app/modules/m8_scope/scope.py` | `tests/test_m8_scope.py::test_blocking_rows_isolate_only_their_table` |
+| TRAP-28 | 新范围落盘覆盖旧版后失败 | 旧版丢失、无法恢复 | 先备份 `.bak` 再临时文件 + 原子替换，失败旧文件不动，回滚用备份恢复 | `app/modules/m8_scope/revision.py` | `tests/test_m8_scope.py::test_persist_failure_keeps_previous_revision` |
+| TRAP-29 | 同批重跑反复生成范围/判定记录 | 修订与批次行无限增长 | revision_id 由范围内容哈希推导，命中即复用；批次键命中复用整次运行 | `app/modules/m8_scope/revision.py` | `tests/test_m8_scope.py::test_rerun_does_not_duplicate_scope_revision` |
 
 ## 对账规则
 
@@ -37,6 +41,7 @@
 - 字段账：新版本 = 未变 + 改名 + 换类型 + 改必填 + 冲突 + 新增
 - 引用账：登记引用 = 可达 + 断链，其中可达 = 直接 + 经别名
 - 采信账：列定义行 = 接受字段 + 阻断行
+- 范围账（M8）：全量字段 = 正式范围字段 + 待复核字段；正式范围旧侧/新侧差额各自为 0；破坏项 = 正式破坏 + 扣留破坏
 - 页面上四账并列显示，差额不为 0 即判不平
 
 ## 已知不覆盖

@@ -3,7 +3,8 @@
 {% block body %}
 <section class="doc-section">
   <h1>影响面</h1>
-  <p class="lede">下游 <span class="mono">{{ summary.consumers or 0 }}</span>　受影响 <span class="mono">{{ graph.total or 0 }}</span>　环 <span class="mono">{{ summary.cycles or 0 }}</span>　断链 <span class="mono">{{ summary.broken or 0 }}</span></p>
+  <p class="lede">下游 <span class="mono">{{ summary.consumers or 0 }}</span>　受影响 <span class="mono">{{ graph.total or 0 }}</span>　环 <span class="mono">{{ summary.cycles or 0 }}</span>　断链 <span class="mono">{{ summary.broken or 0 }}</span>
+    {% if run and run.get('scope') %}　待复核波及 <span class="mono">{{ run.scope.affected_count }}</span>{% endif %}</p>
   {% if empty %}
   <p class="empty">还没有批次。</p>
   {% else %}
@@ -92,6 +93,27 @@
       {% endif %}
     </div>
   </div>
+</section>
+
+<section class="doc-section">
+  <h2><span class="clause">4</span>待复核表波及下游（直接引用 + 反向闭包）</h2>
+  {% if run and run.get('scope') and run.scope.downstream_closure.get('rows') %}
+  <table>
+    <thead><tr><th>下游节点</th><th>类型</th><th class="num">深度</th><th>来源待复核表</th></tr></thead>
+    <tbody>
+      {% for row in run.scope.downstream_closure.rows %}
+      <tr>
+        <td class="name">{{ row.name }}</td>
+        <td>{{ row.kind }}</td>
+        <td class="num">{{ row.depth }}</td>
+        <td class="reason">{{ row.sources|join('，') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">没有待复核表，或没有波及下游。</p>
+  {% endif %}
 </section>
 
 <aside class="notes">

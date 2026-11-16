@@ -9,8 +9,10 @@
 - 读者 / 写者两向判定，结论分兼容、需别名、破坏三档。
 - 字段映射与别名 SQL；改名同时换类型的项不生成别名，单独列为冲突。
 - 影响面 = 引用身份解析后的反向闭包，附环、自引用、断链、单边登记。
+- 表级判定范围：阻断坏行只隔离所在表（待复核），证据完整的表照出正式结论；坏行记录全保留，范围外字段不进正式迁移条款。
+- 范围修订原子落盘：先备份旧版再替换，失败保留旧版、可回滚；同批重跑幂等，不重复生成判定与修订记录。
 - 批次幂等：同一输入命中批次键不再新增行；基线落后的提交返回 409。
-- 迁移单 Markdown + 字段账、引用账、账目、运行清单四份导出。
+- 迁移单 Markdown + 字段账、引用账、账目、范围账、运行清单五份导出。
 
 ## 模块
 
@@ -23,6 +25,7 @@
 | M5 影响面 | 闭包、环、断链、单边 | `GET /api/impact`、`/impact` |
 | M6 版本批次 | 跑批次、历史、陈旧拒绝 | `POST /api/runs`、`/batches` |
 | M7 迁移单 | 条款号、账目导出 | `GET /api/export/spec.md`、`/spec` |
+| M8 判定范围 | 表级正式/待复核、坏行证据、波及下游、修订回滚 | `GET /api/scope`、`/scope` |
 
 ## 核心规则
 
@@ -31,6 +34,7 @@
 3. 必须连与结论：`required` 放宽对读者兼容，收紧对写者破坏。
 4. 引用解析过身份：名字还在但身份换了的算断链，不允许悄悄绑到新列。
 5. 影响面 = 直接引用 + 断链节点 + 反向闭包，深度取最短跳数。
+6. 判定范围按表隔离：阻断坏行只让所在表停在待复核，其他表出正式结论；待复核表记录保留但不进正式条款。
 
 ## 定义
 
@@ -51,23 +55,24 @@ curl -s localhost:18202/api/health
 2. `/types` 类型与兼容：类型格、两向判定表、就地比较两个类型。
 3. `/mapping` 字段映射：`order_no → order_code` 的别名 SQL，`channel → pay_channel` 的冲突。
 4. `/impact` 影响面：受影响节点 4 个、1 个环、1 个自引用、2 处断链、2 处单边。
-5. `/batches` 版本历史：四账并列；「陈旧提交」验证 409。
-6. `/spec` 迁移单：6 条破坏条款，导出 Markdown 与三份 CSV。
+5. `/scope` 判定范围：`dim_order` 因 2 条阻断行停在待复核，`fct_pay`、`dim_user` 出正式结论；波及下游 5 个（直接 3 + 闭包 2）。
+6. `/batches` 版本历史：四账并列加范围账；「陈旧提交」验证 409。
+7. `/spec` 迁移单：正式破坏条款 3 条（均来自 fct_pay），dim_order 的 3 条破坏与别名扣留，导出 Markdown 与四份 CSV。
 
 ## 页面
 
-`/`、`/types`、`/mapping`、`/impact`、`/batches`、`/spec`，另有 `/docs` 作为接口说明。
+`/`、`/types`、`/mapping`、`/impact`、`/scope`、`/batches`、`/spec`，另有 `/docs` 作为接口说明。
 
 ## 目录
 
 ```text
 app/                入口、配置、原因码、清单、库、渲染
-app/modules/m1..m7/ 每个模块 handler + service + 三个纯规则/读写文件
-app/templates/      base + 6 页
+app/modules/m1..m8/ 每个模块 handler + service + 纯规则/读写文件
+app/templates/      base + 7 页
 app/static/         theme / layout / components + app / table / footnote
 docs/               DEPTH、DATA-DICTIONARY、RUNBOOK
 sample_data/        5 个样例，含一个 GB18030 + CRLF + 标记的脏件
-tests/              conftest、7 个模块测试、e2e、不变量、fixtures
+tests/              conftest、8 个模块测试、e2e、不变量、fixtures
 ```
 
 ## 测试

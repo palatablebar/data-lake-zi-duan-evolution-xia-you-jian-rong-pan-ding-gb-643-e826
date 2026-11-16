@@ -34,6 +34,9 @@ def build(fields_old: list[dict], fields_new: list[dict], diff: dict) -> dict:
             "reasons": list(row["reasons"]),
             "reader_ok": row["reader_ok"],
             "writer_ok": row["writer_ok"],
+            "in_scope": bool(row.get("in_scope", True)),
+            "scope_status": row.get("scope_status") or "CONCLUSIVE",
+            "scope_reason": row.get("scope_reason"),
         })
 
     conflicts = _merge_conflicts(rows)

@@ -39,6 +39,8 @@ def run_id_for(key: str) -> str:
 
 
 def build_manifest(run: dict, created_at: datetime) -> dict:
+    scope = run.get("scope") or {}
+    ledger = run.get("ledger") or {}
     return {
         "run_id": run["run_id"],
         "batch_key": run["batch_key"],
@@ -54,4 +56,16 @@ def build_manifest(run: dict, created_at: datetime) -> dict:
         "created_at_local": config.to_local_text(created_at),
         "counts": run["ledger"].get("counts", {}),
         "balanced": run["ledger"].get("balanced", {}),
+        "scope": {
+            "table_count": scope.get("table_count", 0),
+            "conclusive_count": scope.get("conclusive_count", 0),
+            "review_count": scope.get("review_count", 0),
+            "review_tables": scope.get("review_tables", []),
+            "conclusive_tables": scope.get("conclusive_tables", []),
+            "affected_consumers": scope.get("affected_consumers", []),
+            "affected_count": scope.get("affected_count", 0),
+            "blocked_total": scope.get("blocked_total", 0),
+            "formal_breaking": (ledger.get("formal") or {}).get("breaking", 0),
+            "withheld_breaking": (ledger.get("formal") or {}).get("withheld_breaking", 0),
+        },
     }

@@ -19,6 +19,9 @@ os.environ.setdefault("TZ", "UTC")
 def session_db(tmp_path_factory):
     path = tmp_path_factory.mktemp("session") / "fieldmap.sqlite"
     os.environ["FIELDMAP_DB"] = str(path)
+    # 判定范围快照也隔离到临时目录，不写进仓库
+    os.environ.setdefault("FIELDMAP_SCOPE_DIR",
+                          str(tmp_path_factory.mktemp("session-scope")))
     from app import store
 
     store.init_db()
@@ -29,6 +32,7 @@ def session_db(tmp_path_factory):
 def client(tmp_path, monkeypatch):
     """带样例种子的客户端：启动即产生第一条批次。"""
     monkeypatch.setenv("FIELDMAP_DB", str(tmp_path / "fieldmap.sqlite"))
+    monkeypatch.setenv("FIELDMAP_SCOPE_DIR", str(tmp_path / "scope"))
     from app import store
 
     store.reset()
@@ -44,6 +48,7 @@ def client(tmp_path, monkeypatch):
 def empty_client(tmp_path, monkeypatch):
     """没有批次的客户端：验证空态与 404 分支。"""
     monkeypatch.setenv("FIELDMAP_DB", str(tmp_path / "empty.sqlite"))
+    monkeypatch.setenv("FIELDMAP_SCOPE_DIR", str(tmp_path / "scope-empty"))
     from app import store
 
     store.reset()

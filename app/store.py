@@ -52,6 +52,16 @@ CREATE TABLE IF NOT EXISTS quarantine (
     detail        TEXT,
     raw           TEXT
 );
+CREATE TABLE IF NOT EXISTS scope_revisions (
+    revision_id     TEXT PRIMARY KEY,
+    run_id          TEXT NOT NULL,
+    revision_seq    INTEGER NOT NULL,
+    status          TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    reason          TEXT,
+    payload_json    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scope_run ON scope_revisions(run_id, revision_seq);
 CREATE TABLE IF NOT EXISTS kv (
     k TEXT PRIMARY KEY,
     v TEXT NOT NULL
@@ -83,7 +93,7 @@ def reset() -> None:
     """测试与重建用：清空全部业务表。"""
     with _LOCK, _connect() as conn:
         conn.executescript(SCHEMA)
-        for table in ("snapshots", "runs", "quarantine", "kv"):
+        for table in ("snapshots", "runs", "quarantine", "scope_revisions", "kv"):
             conn.execute(f"DELETE FROM {table}")
 
 
@@ -272,3 +282,58 @@ def get_kv(key: str, default=None):
     with _LOCK, _connect() as conn:
         row = conn.execute("SELECT v FROM kv WHERE k=?", (key,)).fetchone()
     return _loads(row["v"]) if row else default
+
+
+# ---------- 判定范围修订 ----------
+
+def save_scope_revision(revision: dict) -> None:
+    """落一条范围修订。revision_id 冲突即幂等复用，不新增行。"""
+    with _LOCK, _connect() as conn:
+        conn.execute(
+            """INSERT INTO scope_revisions (revision_id, run_id, revision_seq, status,
+                   created_at, reason, payload_json)
+               VALUES (?,?,?,?,?,?,?)
+               ON CONFLICT(revision_id) DO NOTHING""",
+            (
+                revision["revision_id"], revision["run_id"], int(revision["revision_seq"]),
+                revision["status"], revision["created_at"], revision.get("reason"),
+                _dumps(revision),
+            ),
+        )
+
+
+def latest_scope_revision(run_id: str) -> dict | None:
+    with _LOCK, _connect() as conn:
+        row = conn.execute(
+            """SELECT payload_json FROM scope_revisions
+               WHERE run_id=? ORDER BY revision_seq DESC, revision_id LIMIT 1""",
+            (run_id,),
+        ).fetchone()
+    return _loads(row["payload_json"]) if row else None
+
+
+def scope_revision_by_id(revision_id: str) -> dict | None:
+    with _LOCK, _connect() as conn:
+        row = conn.execute(
+            "SELECT payload_json FROM scope_revisions WHERE revision_id=?", (revision_id,)
+        ).fetchone()
+    return _loads(row["payload_json"]) if row else None
+
+
+def list_scope_revisions(run_id: str) -> list[dict]:
+    with _LOCK, _connect() as conn:
+        rows = conn.execute(
+            """SELECT payload_json FROM scope_revisions
+               WHERE run_id=? ORDER BY revision_seq, revision_id""",
+            (run_id,),
+        ).fetchall()
+    return [_loads(row["payload_json"]) for row in rows]
+
+
+def next_scope_seq(run_id: str) -> int:
+    with _LOCK, _connect() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(revision_seq), 0) AS n FROM scope_revisions WHERE run_id=?",
+            (run_id,),
+        ).fetchone()
+    return int(row["n"]) + 1

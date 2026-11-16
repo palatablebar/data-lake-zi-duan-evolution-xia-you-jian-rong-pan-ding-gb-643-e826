@@ -24,14 +24,24 @@ def _csv(body: str, filename: str) -> Response:
 @router.get("/spec", response_class=HTMLResponse)
 def spec_page(request: Request):
     run = store.latest_run()
+    all_clauses = service.clauses(run) if run else []
+    formal = [item for item in all_clauses if item.get("in_scope", True)]
+    withheld = [item for item in all_clauses if not item.get("in_scope", True)]
+    review_keys = set(((run or {}).get("scope") or {}).get("review_table_keys") or [])
+    aliases = ((run or {}).get("mapping") or {}).get("aliases") or []
+    formal_aliases = [item for item in aliases if item["table"].lower() not in review_keys]
+    withheld_aliases = [item for item in aliases if item["table"].lower() in review_keys]
     return web.page_or_404(
         request,
         "spec.html",
         "spec",
         run,
-        clauses=service.clauses(run) if run else [],
+        clauses=formal,
+        withheld_clauses=withheld,
         ledger=(run or {}).get("ledger") or {},
-        aliases=((run or {}).get("mapping") or {}).get("aliases") or [],
+        aliases=formal_aliases,
+        withheld_aliases=withheld_aliases,
+        scope=((run or {}).get("scope") or {}),
         warnings=(run or {}).get("warnings") or [],
     )
 
@@ -62,6 +72,12 @@ def export_refs():
 def export_ledger():
     run = service.latest_or_404()
     return _csv(service.ledger_csv_text(run), "fieldmap-ledger.csv")
+
+
+@router.get("/api/export/scope.csv")
+def export_scope():
+    run = service.latest_or_404()
+    return _csv(service.scope_csv_text(run), "fieldmap-scope.csv")
 
 
 @router.get("/api/export/manifest.json")

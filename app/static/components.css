@@ -45,6 +45,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .grid-table thead th, .grid-table tbody td { padding: 5px 10px 5px 0; }
 tbody tr:hover td, tbody tr:hover th { background: var(--paper-2); }
 tbody tr:target td { background: var(--accent-wash); }
+tbody tr.is-review td { background: var(--accent-wash); }
+tbody tr.is-review:hover td { background: var(--paper-2); }
 
 td.name { font-family: var(--font-mono); }
 td.name .from { color: var(--ink-faint); }

@@ -37,6 +37,23 @@ BIG_ID_AS_FLOAT = int(float(BIG_ID))
 
 DEFAULT_WINDOW_FROM = "2026-09-01T00:00:00+00:00"
 
+# M8 判定范围：样例里两张阻断坏行都落在 dim_order（旧版）
+SCOPE_REVIEW_TABLES = ["dim_order"]
+SCOPE_CONCLUSIVE_TABLES = ["dim_user", "fct_pay"]
+SCOPE_TABLE_COUNT = 3
+SCOPE_BLOCKED_TOTAL = 2
+SCOPE_FORMAL_BREAKING = 3
+SCOPE_WITHHELD_BREAKING = 3
+# dim_order 直接下游 3 个，反向闭包再带出 task_settle、ads.rpt_pay_channel
+SCOPE_AFFECTED_CONSUMERS = [
+    "ads.rpt_pay_channel",
+    "dw.mv_order_daily",
+    "dw.mv_order_stat",
+    "dw.task_self",
+    "dw.task_settle",
+]
+SCOPE_AFFECTED_DIRECT = ["dw.mv_order_daily", "dw.mv_order_stat", "dw.task_self"]
+
 
 def make_fields(rows: list[dict]) -> list[dict]:
     """构造带归一类型的字段，供纯规则测试使用。"""

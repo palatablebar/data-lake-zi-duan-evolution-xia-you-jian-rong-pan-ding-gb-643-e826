@@ -65,6 +65,17 @@
 - 阻断行（列定义损坏、重复列、重复身份）不进判定，提示行（派生身份、未知类型、编码回退）照常参算。
 - 空文件、仅表头、全空行都返回 `EMPTY_INPUT` 提示，不当作成功采信。
 
+## 6A 判定范围（表级隔离）
+
+- 每张表两个状态：`CONCLUSIVE`（可出正式兼容结论）与 `REVIEW`（停在待复核）。
+- 一张表只要在旧版或新版任一侧出现「阻断级」隔离行（`LINE_MALFORMED`、`DUPLICATE_COLUMN`、`FIELD_ID_DUP`、`TABLE_UNPARSED`），即判 `REVIEW`；提示级诊断不挡结论。
+- 隔离粒度是表不是整批：坏行所在表停住，证据完整的其他表照常出正式结论。
+- 待复核表的字段行仍逐条计算并保留（含隔离区原文），只打 `in_scope=false`、`scope_status=REVIEW`、`scope_reason=SCOPE_REVIEW`，不进正式迁移条款，避免缺字段被误成新增、旧字段被误成删除。
+- 表只在单侧版本出现且无阻断行时仍可出结论（删除/新增），另记 `SCOPE_ONE_SIDED` 提示。
+- 受影响下游 = 直接引用待复核表的节点 + 沿下游依赖图的反向闭包，深度取最短跳数，末梢节点也带来源待复核表。
+- 范围修订落 SQLite `scope_revisions`（权威历史）与文件快照（`<run_id>.scope.json`，旧版备份 `.bak.json`）；revision_id 由范围内容哈希推导，相同内容重跑不新增行。
+- 落盘先备份旧版再原子替换（临时文件 + `os.replace`），任一步失败旧文件原封不动；回滚用备份原子覆盖，并追加一条 `ROLLED_BACK` 修订。
+
 ## 7 原因码
 
 原因码唯一来源是 `app/reasons.py`，级别 `info / warn / break`。主原因按 `app/modules/m3_compat/priority.py` 的优先级表取，同优先级按码字典序，保证重排输入结论不变。
@@ -77,3 +88,10 @@
 - 列定义行 = 接受字段 + 阻断行
 
 每个字段只进一个桶，所以四个等式成立是必要条件；差额不为 0 即判定漏项。
+
+## 9 正式范围口径
+
+- 全量字段账仍按全部字段守恒，待复核表的记录一条不丢。
+- 另出一份 `formal` 口径：只统计 `in_scope=true` 的行，其旧侧/新侧差额单独校验，必须各自为 0。
+- `formal_breaking` 只数判定范围内的破坏项；待复核表的破坏项计入 `withheld_breaking`，不出正式条款号。
+- 页面、JSON、`fields.csv`、`scope.csv`、`spec.md`、`manifest.json` 共用批次记录上的同一份 `scope` 结构，范围、原因、受影响下游必须一致。

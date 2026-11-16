@@ -53,6 +53,12 @@ CODES: dict[str, tuple[str, str]] = {
     "COMPATIBLE": ("兼容", "info"),
     "COMPATIBLE_BY_MAPPING": ("加别名后兼容", "warn"),
     "BREAKING": ("破坏", "break"),
+    # 判定范围（M8）
+    "SCOPE_REVIEW": ("表级证据不完整，停在待复核", "warn"),
+    "SCOPE_BLOCKED_ROW": ("采信阻断行落在该表", "warn"),
+    "SCOPE_ONE_SIDED": ("表只在单侧版本出现", "warn"),
+    "SCOPE_REVISION_KEPT": ("范围落盘失败，保留旧版", "break"),
+    "SCOPE_RESTORED": ("范围已回滚到上一版", "info"),
 }
 
 # 类型收窄细分，挂在明细里，不进码表

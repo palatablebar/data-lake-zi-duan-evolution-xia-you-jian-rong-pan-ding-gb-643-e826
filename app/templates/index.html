@@ -3,13 +3,18 @@
 {% block body %}
 <section class="doc-section">
   <h1>规格单</h1>
-  <p class="lede">字段 <span class="mono">{{ counts.old_total or 0 }}</span> → <span class="mono">{{ counts.new_total or 0 }}</span>　破坏 <span class="mono">{{ counts.breaking or 0 }}</span>　断链 <span class="mono">{{ counts.refs_broken or 0 }}</span></p>
+  <p class="lede">字段 <span class="mono">{{ counts.old_total or 0 }}</span> → <span class="mono">{{ counts.new_total or 0 }}</span>　破坏 <span class="mono">{{ counts.breaking or 0 }}</span>　正式破坏 <span class="mono">{{ counts.formal_breaking or 0 }}</span>　扣留 <span class="mono">{{ counts.withheld_breaking or 0 }}</span>　断链 <span class="mono">{{ counts.refs_broken or 0 }}</span></p>
   <div class="actions">
     <button type="button" data-action="import">采信样例</button>
     <a class="btn ghost" href="/api/schemas/quarantine.csv">隔离区 CSV</a>
+    <a class="btn ghost" href="/api/export/scope.csv">范围 CSV</a>
     <input type="search" data-filter placeholder="筛选" aria-label="筛选">
     <span class="flash" data-flash></span>
   </div>
+
+  {% if run and run.get('scope') %}
+  <p class="lede">判定范围：正式 <span class="mono">{{ run.scope.conclusive_count }}</span> 张，待复核 <span class="mono">{{ run.scope.review_count }}</span> 张（{% for name in run.scope.review_tables %}<span class="code">{{ name }}</span>{% if not loop.last %}，{% endif %}{% endfor %}），波及下游 <span class="mono">{{ run.scope.affected_count }}</span> 个。<a href="/scope">查看判定范围 →</a></p>
+  {% endif %}
 
   {% if empty %}
   <p class="empty">还没有批次。</p>
@@ -24,12 +29,13 @@
           <th>类型</th>
           <th>必填</th>
           <th>状态</th>
+          <th>范围</th>
           <th>原因</th>
         </tr>
       </thead>
       <tbody>
         {% for row in rows %}
-        <tr>
+        <tr{% if not row.in_scope %} class="is-review"{% endif %}>
           <td class="name">{{ row.table }}</td>
           <td class="name" title="{{ row.field_id }}">
             {% if row.old_name and row.new_name and row.old_name != row.new_name %}
@@ -49,7 +55,11 @@
             {% elif row.verdict == 'COMPATIBLE_BY_MAPPING' %}<span class="st st-warn">别名</span>
             {% else %}<span class="st st-ok">兼容</span>{% endif %}
           </td>
-          <td class="reason"><span class="code">{{ row.primary|reason }}</span></td>
+          <td>
+            {% if row.in_scope %}<span class="st st-ok">正式</span>
+            {% else %}<span class="st st-warn">待复核</span>{% endif %}
+          </td>
+          <td class="reason"><span class="code">{{ row.primary|reason }}</span>{% if not row.in_scope %}　<span class="code">{{ row.scope_reason|reason }}</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
